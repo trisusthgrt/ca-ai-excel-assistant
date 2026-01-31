@@ -69,4 +69,5 @@ ca-ai-excel-assistant/
 - Step 1 — project skeleton; no AI or DB logic yet.
 - Step 2 — dependencies locked in `requirements.txt`; run `python verify_install.py` to verify.
 - Step 3 — MongoDB connection (files, data_rows, chat_history); set `MONGODB_URI` in `.env`, run `python verify_mongo.py` to verify.
+- Step 4 — Excel upload in sidebar (upload date mandatory, client tag optional); parse with pandas, normalize columns/dates/amounts, store in MongoDB (files + data_rows); rowDate from column when present.
 - Follow `STEP_BY_STEP_GUIDE.md` in the repo for full implementation.
