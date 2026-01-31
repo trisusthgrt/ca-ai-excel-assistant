@@ -70,4 +70,5 @@ ca-ai-excel-assistant/
 - Step 2 — dependencies locked in `requirements.txt`; run `python verify_install.py` to verify.
 - Step 3 — MongoDB connection (files, data_rows, chat_history); set `MONGODB_URI` in `.env`, run `python verify_mongo.py` to verify.
 - Step 4 — Excel upload in sidebar (upload date mandatory, client tag optional); parse with pandas, normalize columns/dates/amounts, store in MongoDB (files + data_rows); rowDate from column when present.
+- Step 5 — ChromaDB: after each upload, one embedding per row (text = key: value string); metadata uploadDate, rowDate, clientTag, fileId; persist in `chroma_db/` (or `CHROMA_PERSIST_DIR`). Semantic search via `chroma_client.query(text, n_results, where=...)`.
 - Follow `STEP_BY_STEP_GUIDE.md` in the repo for full implementation.

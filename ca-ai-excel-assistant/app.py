@@ -10,6 +10,7 @@ from db import mongo
 from db.models import row_doc
 from utils.excel_parser import parse_excel
 from utils.normalizer import get_rowdate_column_name, normalize
+from vector import chroma_client
 
 st.set_page_config(page_title="CA AI Excel Assistant", page_icon="📊", layout="wide")
 st.title("CA AI Excel Assistant")
@@ -79,7 +80,28 @@ if uploaded_file is not None and upload_date is not None:
                                 doc = row_doc(file_id, upload_date_str, row_dict, client_tag, row_date_val)
                                 rows.append(doc)
                             inserted = mongo.insert_rows(rows)
-                            st.success(f"Saved: {filename} — {inserted} rows (upload date: {upload_date_str}).")
+                            # Step 5: embed and store in ChromaDB (one text per row, metadata: uploadDate, rowDate, clientTag, fileId)
+                            texts = []
+                            metadatas = []
+                            ids = []
+                            for i, doc in enumerate(rows):
+                                parts = [f"{k}: {v}" for k, v in doc.items() if v is not None]
+                                texts.append(" ".join(parts))
+                                meta = {
+                                    "uploadDate": upload_date_str,
+                                    "clientTag": client_tag or "",
+                                    "fileId": file_id,
+                                }
+                                if doc.get("rowDate"):
+                                    meta["rowDate"] = doc["rowDate"]
+                                metadatas.append(meta)
+                                ids.append(f"{file_id}_{i}")
+                            try:
+                                chroma_client.add_documents(texts, metadatas, ids)
+                            except Exception as emb_err:
+                                st.warning(f"Saved to MongoDB. Embeddings skipped: {emb_err}")
+                            else:
+                                st.success(f"Saved: {filename} — {inserted} rows (upload date: {upload_date_str}). Embeddings stored.")
                             if client_tag:
                                 st.caption(f"Client tag: {client_tag}")
             except Exception as e:
