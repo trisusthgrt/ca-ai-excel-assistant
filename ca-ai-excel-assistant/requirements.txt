@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+streamlit
+pandas
+python-multipart
+pymongo
+chromadb
+autogen
+plotly
+groq
