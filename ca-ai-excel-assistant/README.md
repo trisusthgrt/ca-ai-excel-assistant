@@ -12,7 +12,7 @@ AI system for a Chartered Accountant firm: upload Excel files, ask date-specific
 - **Vector:** ChromaDB (local)  
 - **Charts:** Plotly  
 
-## Setup (local)
+## Setup (local) — Step 2
 
 1. Clone or open this project.
 2. Create and activate a virtual environment (e.g. in project root):
@@ -23,16 +23,21 @@ AI system for a Chartered Accountant firm: upload Excel files, ask date-specific
    # macOS/Linux:
    source venv/bin/activate
    ```
-3. Install dependencies:
+3. Install dependencies (from `ca-ai-excel-assistant` or project root):
    ```bash
    cd ca-ai-excel-assistant
    pip install -r requirements.txt
    ```
-4. Run the app:
+4. **Verify install (Step 2):**
+   ```bash
+   python verify_install.py
+   ```
+   All packages should show `OK`; if any show `FAIL`, run `pip install -r requirements.txt` again.
+5. Run the app:
    ```bash
    streamlit run app.py
    ```
-5. (Optional) Run the API:
+6. (Optional) Run the API:
    ```bash
    uvicorn api:app --reload
    ```
@@ -48,9 +53,12 @@ ca-ai-excel-assistant/
 ├── vector/          # ChromaDB client
 ├── utils/           # Excel parser, normalizer, policy guard
 ├── requirements.txt
+├── verify_install.py   # Step 2: dependency check
 └── README.md
 ```
 
 ## Status
 
-Step 1 complete — project skeleton; no AI or DB logic yet. Follow `STEP_BY_STEP_GUIDE.md` in the repo for full implementation.
+- Step 1 — project skeleton; no AI or DB logic yet.
+- Step 2 — dependencies locked in `requirements.txt`; run `python verify_install.py` to verify.
+- Follow `STEP_BY_STEP_GUIDE.md` in the repo for full implementation.
