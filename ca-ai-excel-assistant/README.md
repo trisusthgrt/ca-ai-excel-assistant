@@ -33,11 +33,16 @@ AI system for a Chartered Accountant firm: upload Excel files, ask date-specific
    python verify_install.py
    ```
    All packages should show `OK`; if any show `FAIL`, run `pip install -r requirements.txt` again.
-5. Run the app:
+5. **MongoDB (Step 3):** Copy `.env.example` to `.env` and set `MONGODB_URI` (Atlas connection string). Then:
+   ```bash
+   python verify_mongo.py
+   ```
+   You should see "Step 3 verification passed."
+6. Run the app:
    ```bash
    streamlit run app.py
    ```
-6. (Optional) Run the API:
+7. (Optional) Run the API:
    ```bash
    uvicorn api:app --reload
    ```
@@ -49,11 +54,13 @@ ca-ai-excel-assistant/
 ├── app.py           # Streamlit entry
 ├── api.py           # FastAPI app
 ├── agents/          # AutoGen agents (planner, data, analyst, responder, orchestrator)
-├── db/              # MongoDB (mongo.py, models.py)
+├── db/              # MongoDB (mongo.py, models.py) — Step 3
 ├── vector/          # ChromaDB client
 ├── utils/           # Excel parser, normalizer, policy guard
 ├── requirements.txt
+├── .env.example     # Copy to .env and set MONGODB_URI (Step 3)
 ├── verify_install.py   # Step 2: dependency check
+├── verify_mongo.py     # Step 3: MongoDB connection check
 └── README.md
 ```
 
@@ -61,4 +68,5 @@ ca-ai-excel-assistant/
 
 - Step 1 — project skeleton; no AI or DB logic yet.
 - Step 2 — dependencies locked in `requirements.txt`; run `python verify_install.py` to verify.
+- Step 3 — MongoDB connection (files, data_rows, chat_history); set `MONGODB_URI` in `.env`, run `python verify_mongo.py` to verify.
 - Follow `STEP_BY_STEP_GUIDE.md` in the repo for full implementation.
