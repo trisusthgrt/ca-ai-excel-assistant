@@ -1,10 +1,14 @@
 """
 CA AI Excel Assistant — Streamlit entry point (Step 10: UI polish).
 """
+import logging
 import uuid
 from io import BytesIO
 
 import streamlit as st
+
+# Ensure orchestrator logs (original query, normalized query, corrections) are visible
+logging.basicConfig(level=logging.INFO, format="%(name)s | %(levelname)s | %(message)s")
 
 from agents.orchestrator import run as orchestrator_run
 from db import mongo
@@ -163,6 +167,13 @@ if not st.session_state.messages:
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
+        # Show query corrections (original → normalized) for assistant messages when any correction was applied
+        correction_map = msg.get("correction_map") or {}
+        if msg["role"] == "assistant" and correction_map:
+            with st.expander("Query corrected (log)", expanded=False):
+                st.caption("**Original:** " + (msg.get("original_query") or ""))
+                st.caption("**Normalized:** " + (msg.get("normalized_query") or ""))
+                st.caption("**Corrections applied:** " + ", ".join(f"'{k}' → '{v}'" for k, v in correction_map.items()))
         st.write(msg["content"])
         _render_chart(msg.get("chart_type"), msg.get("chart_data") or {})
 
@@ -175,7 +186,18 @@ if prompt:
         answer = result.get("answer", "")
         chart_type = result.get("chart_type")
         chart_data = result.get("chart_data")
-        st.session_state.messages.append({"role": "assistant", "content": answer, "chart_type": chart_type, "chart_data": chart_data})
+        original_query = result.get("original_query", "")
+        normalized_query = result.get("normalized_query", "")
+        correction_map = result.get("correction_map") or {}
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer,
+            "chart_type": chart_type,
+            "chart_data": chart_data,
+            "original_query": original_query,
+            "normalized_query": normalized_query,
+            "correction_map": correction_map,
+        })
         if mongo.get_db() is not None:
             mongo.insert_chat(prompt, answer, date_context=None, client_tag=client_tag)
     except Exception as e:

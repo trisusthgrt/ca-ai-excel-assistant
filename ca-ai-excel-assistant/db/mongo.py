@@ -93,6 +93,15 @@ def insert_chat(
     return str(result.inserted_id)
 
 
+def get_distinct_client_tags() -> List[str]:
+    """Return distinct clientTag values from data_rows (and files) for query normalization. Empty if not connected."""
+    coll = _data_rows()
+    if coll is None:
+        return []
+    tags = coll.distinct("clientTag")
+    return [str(t).strip() for t in tags if t is not None and str(t).strip()]
+
+
 def find_files(
     upload_date: Optional[str] = None,
     client_tag: Optional[str] = None,

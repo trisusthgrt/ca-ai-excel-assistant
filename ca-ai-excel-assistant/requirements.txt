@@ -16,3 +16,6 @@ openpyxl>=3.1
 
 # Env vars (MongoDB URI, Groq API key)
 python-dotenv>=1.0
+
+# Query normalization (fuzzy matching)
+rapidfuzz>=3.0,<4

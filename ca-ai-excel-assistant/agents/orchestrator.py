@@ -1,7 +1,8 @@
 """
-Orchestrator — fixed pipeline: Planner → Policy → Data → Analyst → Response (Step 6).
+Orchestrator — fixed pipeline: User Query → normalize_query() → PlannerAgent (receives ONLY normalized query).
 Single run per query; no loops; deterministic flow.
 """
+import logging
 from typing import Any, Dict, Optional
 
 from .planner import plan
@@ -9,22 +10,40 @@ from .data_agent import fetch_data
 from .analyst import analyze
 from .responder import respond
 from utils.policy_guard import check_policy
+from utils.query_normalizer import normalize_query
+
+logger = logging.getLogger(__name__)
 
 
 def run(query: str) -> dict:
     """
-    Run pipeline: Planner → Policy guard → Data → Analyst → Response.
-    Returns {"answer": str, "chart_type": str|None, "chart_data": dict|None}.
+    Run pipeline: User Query → normalize_query() → Planner (only normalized query) → Policy → Data → Analyst → Response.
+    Returns {"answer": str, "chart_type": str|None, "chart_data": dict|None, "original_query": str, "normalized_query": str, "correction_map": dict}.
     """
     if not query or not str(query).strip():
         return {
             "answer": "Please ask a question (e.g. GST on 12 Jan 2025, or expenses for client ABC).",
             "chart_type": None,
             "chart_data": None,
+            "original_query": "",
+            "normalized_query": "",
+            "correction_map": {},
         }
 
-    planner_output = plan(query)
-    policy_result = check_policy(query, planner_output)
+    original_query = str(query).strip()
+
+    # Query normalization BEFORE Planner — Planner receives ONLY the normalized query
+    norm_result = normalize_query(original_query)
+    normalized_query = norm_result.get("normalized_query") or original_query
+    correction_map = norm_result.get("correction_map") or {}
+
+    # Log: original query, normalized query, corrections applied
+    logger.info("original query: %s", original_query)
+    logger.info("normalized query: %s", normalized_query)
+    logger.info("corrections applied: %s", correction_map)
+
+    planner_output = plan(normalized_query)
+    policy_result = check_policy(normalized_query, planner_output)
     action = (policy_result.get("action") or "allow").strip().lower()
     policy_message = policy_result.get("message") or ""
 
@@ -33,12 +52,33 @@ def run(query: str) -> dict:
             "answer": policy_message or "I can't assist with that request.",
             "chart_type": None,
             "chart_data": None,
+            "original_query": original_query,
+            "normalized_query": normalized_query,
+            "correction_map": correction_map,
         }
     if action == "clarify":
         return {
             "answer": policy_message or "Please specify the date or client you're asking about.",
             "chart_type": None,
             "chart_data": None,
+            "original_query": original_query,
+            "normalized_query": normalized_query,
+            "correction_map": correction_map,
+        }
+
+    # confidence < 0.7 means query is ambiguous — ask user to rephrase or specify
+    confidence = float(planner_output.get("confidence", 1.0))
+    if confidence < 0.7:
+        return {
+            "answer": (
+                "Your question seems ambiguous. Please add a date or date range, "
+                "client name, or rephrase (e.g. 'GST on 12 Jan 2025', 'expense trend for Jan 2025')."
+            ),
+            "chart_type": None,
+            "chart_data": None,
+            "original_query": original_query,
+            "normalized_query": normalized_query,
+            "correction_map": correction_map,
         }
 
     data = fetch_data(planner_output)
@@ -47,7 +87,7 @@ def run(query: str) -> dict:
     answer = respond(
         planner_output,
         analyst_output,
-        query,
+        normalized_query,
         policy_action=action,
         policy_message=policy_message if action == "reframe" else None,
     )
@@ -80,4 +120,7 @@ def run(query: str) -> dict:
         "answer": answer,
         "chart_type": chart_type,
         "chart_data": chart_data,
+        "original_query": original_query,
+        "normalized_query": normalized_query,
+        "correction_map": correction_map,
     }
