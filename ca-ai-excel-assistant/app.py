@@ -53,25 +53,62 @@ def _dataframe_row_to_dict(row, columns):
     return {c: _serialize_value(row[c]) for c in columns}
 
 
+def _plotly_default_layout(fig, title: str = "", is_pie: bool = False):
+    """Apply hover, zoom, and legend so all charts support them."""
+    fig.update_layout(
+        title=title or None,
+        hovermode="closest",
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=50, b=50, l=50, r=50),
+    )
+    if not is_pie:
+        fig.update_xaxes(rangeslider_visible=False, fixedrange=False)
+        fig.update_yaxes(fixedrange=False)
+    return fig
+
+
 def _render_chart(chart_type: str, chart_data: dict) -> bool:
-    """Step 9: render Plotly line or bar from chart_data (x, y, labels, optional title). Returns True if rendered."""
-    if not chart_data or not chart_type or chart_type not in ("line", "bar"):
+    """
+    Render Plotly chart: line → trends, bar → comparisons, pie → distribution, stacked_bar → breakdown.
+    Supports hover, zoom, legends. Returns True if rendered.
+    """
+    if not chart_data or not chart_type or chart_type not in ("line", "bar", "pie", "stacked_bar"):
         return False
     x = chart_data.get("x") or []
     y = chart_data.get("y") or []
     if not x or not y or len(x) != len(y):
         return False
     labels = chart_data.get("labels") or ["x", "y"]
+    x_name = labels[0] if len(labels) > 0 else "x"
+    y_name = labels[1] if len(labels) > 1 else "y"
     title = chart_data.get("title") or ""
     try:
         import plotly.express as px
+
         if chart_type == "line":
-            fig = px.line(x=x, y=y, labels={"x": labels[0] if len(labels) > 0 else "date", "y": labels[1] if len(labels) > 1 else "value"})
+            fig = px.line(x=x, y=y, labels={"x": x_name, "y": y_name}, title=title)
+        elif chart_type == "bar":
+            fig = px.bar(x=x, y=y, labels={"x": x_name, "y": y_name}, title=title)
+        elif chart_type == "pie":
+            fig = px.pie(values=y, names=x, title=title)
+            fig.update_traces(textposition="inside", textinfo="percent+label")
+        elif chart_type == "stacked_bar":
+            fig = px.bar(x=x, y=y, labels={"x": x_name, "y": y_name}, title=title)
+            fig.update_layout(barmode="stack")
         else:
-            fig = px.bar(x=x, y=y, labels={"x": labels[0] if len(labels) > 0 else "category", "y": labels[1] if len(labels) > 1 else "amount"})
-        if title:
-            fig.update_layout(title=title)
-        st.plotly_chart(fig, use_container_width=True)
+            return False
+
+        fig = _plotly_default_layout(fig, title, is_pie=(chart_type == "pie"))
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config=dict(
+                displayModeBar=True,
+                displaylogo=False,
+                modeBarButtonsToInclude=["zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
+            ),
+        )
         return True
     except Exception:
         return False
@@ -93,10 +130,12 @@ if uploaded_file is not None and upload_date is not None:
                         upload_date_str = upload_date.strftime("%Y-%m-%d")
                         filename = uploaded_file.name or "upload.xlsx"
                         row_count = len(norm_df)
+                        column_count = len(col_names)
+                        column_names = list(col_names)
                         rowdate_col = get_rowdate_column_name(col_names)
 
-                        # Insert file metadata
-                        fid = mongo.insert_file(file_id, upload_date_str, filename, row_count, client_tag)
+                        # Insert file metadata (column_names, column_count for schema_query)
+                        fid = mongo.insert_file(file_id, upload_date_str, filename, row_count, client_tag, column_names=column_names, column_count=column_count)
                         if fid == "" and mongo.get_db() is None:
                             st.warning("MongoDB not connected. Set MONGODB_URI in .env to persist data.")
                         elif fid != "":
@@ -175,28 +214,65 @@ for msg in st.session_state.messages:
                 st.caption("**Normalized:** " + (msg.get("normalized_query") or ""))
                 st.caption("**Corrections applied:** " + ", ".join(f"'{k}' → '{v}'" for k, v in correction_map.items()))
         st.write(msg["content"])
-        _render_chart(msg.get("chart_type"), msg.get("chart_data") or {})
+        needs_chart = msg.get("needs_chart", False)
+        chart_type = msg.get("chart_type")
+        chart_data = msg.get("chart_data") or {}
+        chart_fallback_table = msg.get("chart_fallback_table") or False
+        show_data_table = msg.get("show_data_table") or False
+        table_data = msg.get("table_data")
+        # Render chart ONLY if needs_chart and validation passed; otherwise show dataframe
+        if needs_chart and chart_type and chart_data and not chart_fallback_table:
+            _render_chart(chart_type, chart_data)
+        if show_data_table and table_data:
+            st.caption("**Sample of uploaded data** (first 200 rows)")
+            st.dataframe(table_data, use_container_width=True)
+        elif chart_fallback_table and table_data:
+            st.caption(msg.get("chart_fallback_message") or "Not enough data to generate chart, showing table instead.")
+            st.dataframe(table_data, use_container_width=True)
+        elif table_data and not show_data_table:
+            st.dataframe(table_data, use_container_width=True)
 
 prompt = st.chat_input("Ask a question (e.g. GST on 12 Jan 2025, expenses for client ABC)...")
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt, "chart_data": None})
+    # Clarification state: only one clarification per query; if user confirms (yes/same query), use defaults
+    clarification_context = None
+    if st.session_state.messages:
+        last_msg = st.session_state.messages[-2] if len(st.session_state.messages) >= 2 else None  # previous assistant
+        if last_msg and last_msg.get("role") == "assistant" and last_msg.get("is_clarification"):
+            last_norm = (last_msg.get("normalized_query") or "").strip().lower()
+            prompt_lower = prompt.strip().lower()
+            if last_norm and (prompt_lower == last_norm or prompt_lower in ("yes", "ok", "y")):
+                clarification_context = {"normalized_query": last_msg.get("normalized_query", ""), "confirmed": True}
     try:
         with st.spinner("Thinking..."):
-            result = orchestrator_run(prompt)
+            result = orchestrator_run(prompt, clarification_context=clarification_context)
         answer = result.get("answer", "")
+        needs_chart = result.get("needs_chart", False)
         chart_type = result.get("chart_type")
         chart_data = result.get("chart_data")
+        chart_fallback_table = result.get("chart_fallback_table") or False
+        chart_fallback_message = result.get("chart_fallback_message") or ""
+        show_data_table = result.get("show_data_table") or False
+        table_data = result.get("table_data")
         original_query = result.get("original_query", "")
         normalized_query = result.get("normalized_query", "")
         correction_map = result.get("correction_map") or {}
+        is_clarification = result.get("is_clarification", False)
         st.session_state.messages.append({
             "role": "assistant",
             "content": answer,
+            "needs_chart": needs_chart,
             "chart_type": chart_type,
             "chart_data": chart_data,
+            "chart_fallback_table": chart_fallback_table,
+            "chart_fallback_message": chart_fallback_message,
+            "show_data_table": show_data_table,
+            "table_data": table_data,
             "original_query": original_query,
             "normalized_query": normalized_query,
             "correction_map": correction_map,
+            "is_clarification": is_clarification,
         })
         if mongo.get_db() is not None:
             mongo.insert_chat(prompt, answer, date_context=None, client_tag=client_tag)

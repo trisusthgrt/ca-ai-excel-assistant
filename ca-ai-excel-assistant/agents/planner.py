@@ -68,6 +68,7 @@ def _default_structured() -> dict:
         "intent": "other",
         "confidence": 0.0,
         "date_filter": {},
+        "date_filter_type": "row_date",
         "client": None,
         "metric": None,
         "needs_chart": False,
@@ -114,9 +115,10 @@ def plan(query: str) -> dict:
 Extract from the user message and reply with ONLY a valid JSON object (no markdown, no explanation).
 
 Required keys:
-- intent: one of gst_summary, expense_breakdown, trend, compare_dates, distribution, single_value, other
+- intent: one of gst_summary, expense_breakdown, trend, compare_dates, distribution, single_value, explain, summarize, insights, why, other
 - confidence: number 0 to 1 (1 = clear intent, <0.7 = ambiguous)
 - date_filter: object. Use {"single": "YYYY-MM-DD"} for one date, {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"} for range, {} if none
+- date_filter_type: "upload_date" OR "row_date". Use "upload_date" ONLY when the user explicitly asks for data BY UPLOAD DATE (e.g. "data uploaded on 2 Feb", "upload date 2 Feb 2025", "file uploaded on X", "show data for upload date X"). Use "row_date" for dates IN THE DATA (e.g. "GST on 12 Jan", "data on 12 Jan", "transactions on X", "trend for January"). Default "row_date".
 - client: client name if mentioned, else null
 - metric: primary metric (e.g. gst, amount, expense, revenue) or null
 - needs_chart: true ONLY for trends, comparisons, or distributions; false for single-value queries
@@ -125,7 +127,7 @@ Required keys:
 - y_axis: e.g. "amount", "value", "total" or null
 - risk_flag: true only if query asks for illegal tax evasion or hiding income; else false
 
-Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. confidence < 0.7 means ambiguous."""
+Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. confidence < 0.7 means ambiguous. date_filter_type = upload_date only when user says upload/uploaded; else row_date."""
         response = client.chat.completions.create(
             model=os.getenv("GROQ_MODEL", DEFAULT_MODEL),
             messages=[
@@ -162,7 +164,7 @@ Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. 
 
         needs_chart = bool(data.get("needs_chart", False))
         # Enforce: needs_chart true only for trends, comparisons, distributions
-        if intent in SINGLE_VALUE_INTENTS:
+        if intent in SINGLE_VALUE_INTENTS or intent in ("explain", "summarize", "insights", "why"):
             needs_chart = False
         elif intent in CHART_INTENTS:
             needs_chart = True
@@ -194,6 +196,11 @@ Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. 
         else:
             dates = _parse_dates_from_llm(data.get("dates", []))
 
+        # date_filter_type: filter by upload date (when file was uploaded) vs row date (date in dataset)
+        date_filter_type = (data.get("date_filter_type") or "row_date").strip().lower()
+        if date_filter_type not in ("upload_date", "row_date"):
+            date_filter_type = "row_date"
+
         chart_scope = data.get("chart_scope")
         if chart_scope is not None:
             chart_scope = str(chart_scope).strip() or None
@@ -208,6 +215,7 @@ Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. 
             "intent": intent,
             "confidence": confidence,
             "date_filter": date_filter,
+            "date_filter_type": date_filter_type,
             "client": client,
             "metric": metric,
             "needs_chart": needs_chart,
@@ -226,7 +234,15 @@ Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. 
 def _plan_fallback(q: str, query: str) -> dict:
     """Heuristic fallback when Groq is unavailable."""
     intent = "gst_summary"
-    if "trend" in q or "over time" in q:
+    if "why" in q:
+        intent = "why"
+    elif "explain" in q:
+        intent = "explain"
+    elif "summarize" in q or "summary" in q:
+        intent = "summarize"
+    elif "insight" in q:
+        intent = "insights"
+    elif "trend" in q or "over time" in q:
         intent = "trend"
     elif "compare" in q or "vs" in q:
         intent = "compare_dates"
@@ -236,6 +252,8 @@ def _plan_fallback(q: str, query: str) -> dict:
         intent = "distribution"
 
     risk_flag = "evade" in q or "evasion" in q or "hide income" in q
+    # upload_date = filter by when file was uploaded; row_date = filter by date in the dataset
+    date_filter_type = "upload_date" if re.search(r"\bupload\s*(date|ed)?\s*(on)?\b", q, re.I) else "row_date"
     dates = re.findall(r"\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}", query)
     if not dates:
         dates = re.findall(r"\d{4}-\d{2}-\d{2}", query)
@@ -258,6 +276,7 @@ def _plan_fallback(q: str, query: str) -> dict:
         "intent": intent,
         "confidence": confidence,
         "date_filter": date_filter,
+        "date_filter_type": date_filter_type,
         "client": None,
         "metric": metric,
         "needs_chart": needs_chart,

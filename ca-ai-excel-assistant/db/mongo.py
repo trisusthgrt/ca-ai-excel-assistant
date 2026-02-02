@@ -59,12 +59,14 @@ def insert_file(
     filename: str,
     row_count: int,
     client_tag: Optional[str] = None,
+    column_names: Optional[list] = None,
+    column_count: Optional[int] = None,
 ) -> str:
-    """Insert file metadata. Returns fileId or empty string if not connected."""
+    """Insert file metadata (including column_names, column_count for schema_query). Returns fileId or empty string if not connected."""
     coll = _files()
     if coll is None:
         return ""
-    doc = file_doc(file_id, upload_date, filename, row_count, client_tag)
+    doc = file_doc(file_id, upload_date, filename, row_count, client_tag, column_names=column_names, column_count=column_count)
     coll.insert_one(doc)
     return file_id
 
@@ -116,6 +118,59 @@ def find_files(
     if client_tag is not None:
         q["clientTag"] = client_tag
     return list(coll.find(q))
+
+
+def get_latest_file_schema() -> dict:
+    """
+    Return schema metadata from the most recently uploaded file for schema_query.
+    Returns: { "column_names": list, "column_count": int, "row_count": int } or empty dict if no files.
+    """
+    coll = _files()
+    if coll is None:
+        return {}
+    doc = coll.find_one(sort=[("createdAt", -1)])
+    if doc is None:
+        return {}
+    return {
+        "column_names": doc.get("columnNames") or [],
+        "column_count": doc.get("columnCount") or len(doc.get("columnNames") or []),
+        "row_count": doc.get("rowCount") or 0,
+    }
+
+
+def get_latest_file_meta() -> dict:
+    """
+    Return minimal metadata for the most recently uploaded file.
+    Returns: { "file_id": str, "upload_date": str } or empty dict if no files.
+    """
+    coll = _files()
+    if coll is None:
+        return {}
+    doc = coll.find_one(sort=[("createdAt", -1)])
+    if doc is None:
+        return {}
+    return {
+        "file_id": doc.get("fileId"),
+        "upload_date": doc.get("uploadDate"),
+    }
+
+
+def get_nearby_dates_for_client(
+    client_tag: Optional[str] = None,
+    limit: int = 5,
+) -> List[str]:
+    """
+    Return distinct rowDate values for "no data" suggestions (e.g. "Data exists on 9 Feb, 11 Feb").
+    """
+    coll = _data_rows()
+    if coll is None:
+        return []
+    q = {}
+    if client_tag is not None:
+        q["clientTag"] = client_tag
+    dates = coll.distinct("rowDate", q) if q else coll.distinct("rowDate")
+    dates = sorted([str(d).strip() for d in dates if d is not None and str(d).strip()])
+    return dates[:limit] if limit else dates
 
 
 def find_rows(

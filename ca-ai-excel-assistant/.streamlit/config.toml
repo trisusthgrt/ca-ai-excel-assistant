@@ -4,7 +4,7 @@
 [server]
 headless = true
 port = 8501
-enableCORS = false
+# enableCORS must be true when enableXsrfProtection is true (Streamlit requirement)
 enableXsrfProtection = true
 
 [browser]

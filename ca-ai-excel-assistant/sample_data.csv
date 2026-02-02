@@ -1,0 +1,51 @@
+Date,Amount,GST,Category,Description
+2025-01-20,7195.67,1295.22,Travel,Invoice payment
+2025-01-08,5320.94,957.77,Travel,Invoice payment
+2025-01-31,10780.3,1940.45,Travel,Client project
+2025-01-20,23716.96,4269.05,Misc,Invoice payment
+2025-01-06,6554.71,1179.85,Misc,Recurring
+2025-01-01,39016.47,7022.96,Consulting,Client project
+2025-01-29,11654.77,2097.86,Rent,Subscription
+2025-01-04,11945.06,2150.11,Travel,One-time cost
+2025-01-08,5581.52,1004.67,Misc,Subscription
+2025-01-05,49453.35,8901.6,Software,Client project
+2025-01-07,30978.9,5576.2,Office Supplies,Client project
+2025-01-15,27282.0,4910.76,Misc,Recurring
+2025-01-29,21218.23,3819.28,Travel,Monthly expense
+2025-01-23,551.27,99.23,Rent,Subscription
+2025-01-26,40090.99,7216.38,Misc,Recurring
+2025-01-13,37194.49,6695.01,Misc,Monthly expense
+2025-01-31,31519.97,5673.59,Rent,Client project
+2025-01-18,22971.59,4134.89,Misc,Subscription
+2025-01-23,23506.03,4231.09,Utilities,One-time cost
+2025-01-03,18463.7,3323.47,Software,Subscription
+2025-01-19,23704.67,4266.84,Utilities,One-time cost
+2025-01-10,36947.77,6650.6,Consulting,Monthly expense
+2025-01-30,2965.16,533.73,Travel,Invoice payment
+2025-01-21,5654.54,1017.82,Misc,Invoice payment
+2025-01-20,4879.4,878.29,Misc,Recurring
+2025-01-19,38163.04,6869.35,Misc,Client project
+2025-01-17,20923.41,3766.21,Office Supplies,Client project
+2025-01-24,12120.79,2181.74,Travel,Recurring
+2025-01-05,34107.55,6139.36,Utilities,Subscription
+2025-01-30,26520.2,4773.64,Travel,Client project
+2025-01-02,21008.28,3781.49,Misc,Client project
+2025-01-16,32733.22,5891.98,Software,One-time cost
+2025-01-17,23442.51,4219.65,Misc,Recurring
+2025-01-17,36806.4,6625.15,Rent,Client project
+2025-01-11,45294.83,8153.07,Travel,One-time cost
+2025-01-30,15248.16,2744.67,Utilities,Recurring
+2025-01-15,28688.16,5163.87,Travel,One-time cost
+2025-01-07,35392.0,6370.56,Travel,Recurring
+2025-01-10,47941.95,8629.55,Rent,Subscription
+2025-01-06,38323.93,6898.31,Office Supplies,One-time cost
+2025-01-19,31399.03,5651.83,Travel,Monthly expense
+2025-01-19,39972.95,7195.13,Consulting,Subscription
+2025-01-12,13732.92,2471.93,Rent,Subscription
+2025-01-21,14512.88,2612.32,Office Supplies,Invoice payment
+2025-01-07,534.47,96.2,Misc,One-time cost
+2025-01-31,3948.67,710.76,Rent,Invoice payment
+2025-01-01,3823.32,688.2,Rent,Invoice payment
+2025-01-06,19217.77,3459.2,Office Supplies,Monthly expense
+2025-01-30,30452.04,5481.37,Utilities,Subscription
+2025-01-16,11895.63,2141.21,Misc,Invoice payment

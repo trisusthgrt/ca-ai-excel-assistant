@@ -7,8 +7,9 @@ from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
 # File metadata (collection: files)
+# Schema awareness: column_names, column_count, row_count persisted at upload.
 # ---------------------------------------------------------------------------
-FILE_FIELDS = ["fileId", "uploadDate", "clientTag", "filename", "rowCount", "createdAt"]
+FILE_FIELDS = ["fileId", "uploadDate", "clientTag", "filename", "rowCount", "columnCount", "columnNames", "createdAt"]
 
 
 def file_doc(
@@ -17,10 +18,12 @@ def file_doc(
     filename: str,
     row_count: int,
     client_tag: Optional[str] = None,
+    column_names: Optional[list] = None,
+    column_count: Optional[int] = None,
     created_at: Optional[datetime] = None,
 ) -> dict:
-    """Build a file document for insertion."""
-    return {
+    """Build a file document for insertion. column_names and column_count for schema_query."""
+    doc = {
         "fileId": file_id,
         "uploadDate": upload_date,
         "clientTag": client_tag,
@@ -28,6 +31,13 @@ def file_doc(
         "rowCount": row_count,
         "createdAt": created_at or datetime.utcnow(),
     }
+    if column_names is not None:
+        doc["columnNames"] = list(column_names)
+    if column_count is not None:
+        doc["columnCount"] = int(column_count)
+    elif column_names is not None:
+        doc["columnCount"] = len(column_names)
+    return doc
 
 
 # ---------------------------------------------------------------------------
