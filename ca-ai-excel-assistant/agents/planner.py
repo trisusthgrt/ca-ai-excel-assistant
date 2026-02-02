@@ -123,11 +123,13 @@ Required keys:
 - metric: primary metric (e.g. gst, amount, expense, revenue) or null
 - needs_chart: true ONLY for trends, comparisons, or distributions; false for single-value queries
 - chart_type: "line" (trend), "bar" (breakdown/compare), "pie" (share), "stacked_bar" (composition), or null
-- x_axis: e.g. "date", "category", "client" or null
+- x_axis: e.g. "date", "category", "client", "clientname", "branch" or null
 - y_axis: e.g. "amount", "value", "total" or null
+- breakdown_by: column name for breakdown (e.g. "ClientName", "Branch", "Category", "SubCategory") if user asks "breakdown by X" or "by X"; else null
 - risk_flag: true only if query asks for illegal tax evasion or hiding income; else false
 
-Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. confidence < 0.7 means ambiguous. date_filter_type = upload_date only when user says upload/uploaded; else row_date."""
+Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. confidence < 0.7 means ambiguous. date_filter_type = upload_date only when user says upload/uploaded; else row_date.
+If user asks "breakdown by ClientName" or "GST by Branch", set breakdown_by to the exact column name (e.g. "ClientName", "Branch")."""
         response = client.chat.completions.create(
             model=os.getenv("GROQ_MODEL", DEFAULT_MODEL),
             messages=[
@@ -186,6 +188,10 @@ Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. 
         if y_axis is not None:
             y_axis = str(y_axis).strip() or None
 
+        breakdown_by = data.get("breakdown_by")
+        if breakdown_by is not None:
+            breakdown_by = str(breakdown_by).strip() or None
+
         risk_flag = bool(data.get("risk_flag", False))
 
         # Derive dates list from date_filter for legacy consumers
@@ -222,6 +228,7 @@ Rules: Single-value queries (e.g. "GST on 12 Jan") must have needs_chart=false. 
             "chart_type": chart_type,
             "x_axis": x_axis,
             "y_axis": y_axis,
+            "breakdown_by": breakdown_by,
             "dates": dates,
             "client_tag": client,
             "risk_flag": risk_flag,
@@ -270,6 +277,23 @@ def _plan_fallback(q: str, query: str) -> dict:
     metric = "gst" if "gst" in q else ("expense" if "expense" in q else "amount")
     confidence = 0.6 if not dates else 0.85  # ambiguous if no dates
 
+    # Extract breakdown_by from query: "breakdown by ClientName" or "GST by Branch"
+    breakdown_by = None
+    # Pattern 1: "breakdown by ClientName" or "breakdown by Branch"
+    breakdown_match = re.search(r"\bbreakdown\s+by\s+([A-Z][a-zA-Z]+)", query, re.I)
+    if breakdown_match:
+        breakdown_by = breakdown_match.group(1)
+    else:
+        # Pattern 2: "GST by ClientName" or "Show GST by Branch" (metric + by + column)
+        by_match = re.search(r"\b(?:gst|amount|expense|total|revenue|sales)\s+by\s+([A-Z][a-zA-Z]+)", query, re.I)
+        if by_match:
+            breakdown_by = by_match.group(1)
+        elif "by" in q and (intent == "expense_breakdown" or "breakdown" in q):
+            # Pattern 3: Generic "by X" when breakdown is mentioned
+            by_generic = re.search(r"\bby\s+([A-Z][a-zA-Z]+)", query, re.I)
+            if by_generic:
+                breakdown_by = by_generic.group(1)
+
     chart_scope = "trend over time" if intent == "trend" else ("breakdown by category" if intent == "expense_breakdown" else ("compare dates" if intent == "compare_dates" else None))
 
     return {
@@ -283,6 +307,7 @@ def _plan_fallback(q: str, query: str) -> dict:
         "chart_type": chart_type,
         "x_axis": x_axis,
         "y_axis": y_axis,
+        "breakdown_by": breakdown_by,
         "dates": dates,
         "client_tag": None,
         "risk_flag": risk_flag,

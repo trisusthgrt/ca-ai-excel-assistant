@@ -433,7 +433,8 @@ def run(query: str, clarification_context: Optional[Dict[str, Any]] = None) -> d
 
     # AnalystAgent runs only if rows > 0 (never invent totals)
     intent = planner_output.get("intent") or "other"
-    analyst_output = analyze(intent, data)
+    breakdown_by = planner_output.get("breakdown_by")
+    analyst_output = analyze(intent, data, breakdown_by=breakdown_by)
 
     # Summarize intent: enrich with schema column names and attach raw data sample for UI
     show_data_table = False

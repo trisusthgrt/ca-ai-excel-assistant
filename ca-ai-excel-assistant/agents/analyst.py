@@ -56,11 +56,12 @@ def _find_key(row: dict, candidates: set) -> Optional[str]:
     return None
 
 
-def analyze(intent: str, data: Any) -> dict:
+def analyze(intent: str, data: Any, breakdown_by: Optional[str] = None) -> dict:
     """
     Perform calculations only. No LLM.
     SAFETY: Run only if rows > 0 (or cached daily/monthly totals present). Never invent totals; only compute over provided rows.
     data: list of row dicts OR dict from DataAgent with "rows", "daily_totals", "monthly_totals".
+    breakdown_by: optional column name to break down by (e.g. "ClientName", "Branch", "Category").
     Returns structured dict: total, breakdown, series, compare, etc.
     """
     # Guard: do not run on empty data (orchestrator should not call when rows==0; this is a safety backstop)
@@ -107,8 +108,21 @@ def analyze(intent: str, data: Any) -> dict:
 
     # Detect date column
     date_key = _find_key(rows[0] if rows else {}, DATE_KEYS) or "rowDate"
-    # Detect category column
-    category_key = _find_key(rows[0] if rows else {}, CATEGORY_KEYS)
+    # Detect category column: use breakdown_by if provided, otherwise try predefined category keys
+    category_key = None
+    if breakdown_by and rows:
+        # Try exact match first
+        if breakdown_by in (rows[0] if rows else {}):
+            category_key = breakdown_by
+        else:
+            # Try case-insensitive match
+            breakdown_lower = breakdown_by.lower()
+            for col_name in (rows[0] if rows else {}).keys():
+                if col_name.lower() == breakdown_lower:
+                    category_key = col_name
+                    break
+    if not category_key:
+        category_key = _find_key(rows[0] if rows else {}, CATEGORY_KEYS)
 
     amount_values: List[float] = []
     for r in rows:
@@ -137,6 +151,30 @@ def analyze(intent: str, data: Any) -> dict:
             row_dates.append(str(d)[:10])
     if row_dates:
         result["date_range"] = {"min": min(row_dates), "max": max(row_dates)}
+
+    # Handle breakdown requests FIRST (even for gst_summary intent) when breakdown_by is provided
+    # This handles cases like "GST breakdown by ClientName" or "Show GST by Branch"
+    if breakdown_by and rows:
+        # Find the actual column name (case-insensitive match)
+        breakdown_col = None
+        breakdown_lower = breakdown_by.lower()
+        for col_name in (rows[0] if rows else {}).keys():
+            if col_name.lower() == breakdown_lower:
+                breakdown_col = col_name
+                break
+        if breakdown_col:
+            by_col: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+            for r in rows:
+                col_val = str(r.get(breakdown_col, "Other")).strip() or "Other"
+                n = _numeric(r.get(amount_key)) if amount_key else None
+                if n is not None:
+                    by_col[col_val] += Decimal(str(n))
+            if by_col:
+                result["breakdown"] = [{"category": k, "amount": _round2(float(v))} for k, v in sorted(by_col.items())]
+                result["total"] = _decimal_sum([float(v) for v in by_col.values()])
+                result["chart_type"] = "bar"
+                result["summary"] = f"{amount_key or 'Amount'} breakdown by {breakdown_col}" if amount_key else f"Breakdown by {breakdown_col}"
+                return result
 
     if intent == "gst_summary":
         result["summary"] = "GST/amount total"
@@ -171,6 +209,7 @@ def analyze(intent: str, data: Any) -> dict:
             result["column_names"] = list(rows[0].keys())
         return result
 
+    # Breakdown intent: compute breakdown by category_key (which may be breakdown_by from planner)
     if intent == "expense_breakdown" and category_key:
         by_cat: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         for r in rows:
