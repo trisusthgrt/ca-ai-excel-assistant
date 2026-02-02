@@ -77,57 +77,57 @@ Below is the **end‑to‑end workflow** across upload, storage, agents, and UI.
 ```mermaid
 graph TD
 
-  subgraph Startup [App Startup]
+  subgraph Startup [AppStartup]
     A1[UserRuns_streamlit_run_app.py] --> A2[StreamlitLoads_app.py]
     A2 --> A3[RenderSidebar_UploadControls]
     A2 --> A4[RenderChatArea]
   end
 
-  subgraph UploadFlow [Excel Upload → MongoDB + ChromaDB]
+  subgraph UploadFlow [ExcelUpload_to_MongoDB_and_ChromaDB]
     U1[UserSelectsExcel_and_UploadDate] --> U2[Click_Parse_and_Save]
     U2 --> U3[excel_parser_parse_excel]
     U3 --> U4[normalizer_normalize]
-    U4 --> U5[BuildFileMetadata_fileId_uploadDate_rowCount_columnNames]
-    U5 --> U6[mongo_insert_file_into_files]
-    U4 --> U7[BuildRowDocs_row_doc_per_row]
-    U7 --> U8[mongo_insert_rows_into_data_rows]
+    U4 --> U5[BuildFileMetadata]
+    U5 --> U6[mongo_insert_file]
+    U4 --> U7[BuildRowDocs]
+    U7 --> U8[mongo_insert_rows]
     U8 --> U9[BuildTextPerRow_and_Metadata]
     U9 --> U10[chroma_add_documents]
   end
 
-  subgraph ChatFlow [Chat Query → Agents → Answer]
-    C1[UserTypesQuestion_in_Chat] --> C2[AppendUserMessage_to_SessionState]
-    C2 --> C3[orchestrator_run(query_+_clarification_context)]
+  subgraph ChatFlow [ChatQuery_to_Agents_to_Answer]
+    C1[UserTypesQuestion] --> C2[AppendUserMessage]
+    C2 --> C3["Call orchestrator_run(query, clarification_context)"]
 
     C3 --> C4[query_normalizer_normalize_query]
     C4 --> C5[planner_plan]
     C5 --> C6[policy_guard_check_policy]
 
-    C6 -->|block/clarify| C7[ReturnSafeOrClarificationMessage]
-    C6 -->|allow/reframe| C8[query_router_route_query_type]
+    C6 -->|block_or_clarify| C7[ReturnSafeOrClarificationMessage]
+    C6 -->|allow_or_reframe| C8[query_router_route_query_type]
 
     C8 -->|schema_query| C9[mongo_get_latest_file_schema]
     C9 --> C14[BuildSchemaAnswer_andReturn]
 
-    C8 -->|data/vague/explanation| C10[ApplySmartDefaults_ifVague]
+    C8 -->|data_vague_or_explanation| C10[ApplySmartDefaults_ifVague]
     C10 --> C11[data_agent_fetch_data]
 
-    C11 -->|rows == 0| C12[ExplainNoData_andSuggestNearbyDates]
-    C11 -->|rows > 0| C13[analyst_analyze]
+    C11 -->|rows_zero| C12[ExplainNoData_andSuggestNearbyDates]
+    C11 -->|rows_gt_zero| C13[analyst_analyze]
 
     C13 --> C15[IfSummarize_AddSchemaColumns_and_SampleRows]
     C15 --> C16[responder_respond]
 
-    C16 --> C17[BuildChartOrTable_using_chart_validator]
+    C16 --> C17[BuildChartOrTable_with_chart_validator]
     C17 --> C18[ReturnResult_to_Streamlit]
   end
 
-  subgraph Render [Render in Streamlit]
-    C18 --> R1[AppendAssistantMessage_to_SessionState]
+  subgraph Render [RenderInStreamlit]
+    C18 --> R1[AppendAssistantMessage]
     R1 --> R2[RenderTextAnswer]
     R1 --> R3[RenderPlotlyChart_if_valid]
-    R1 --> R4[RenderDataFrame_if_show_data_table_or_chart_fallback]
-    R1 --> R5[mongo_insert_chat_into_chat_history]
+    R1 --> R4[RenderDataFrame_if_needed]
+    R1 --> R5[mongo_insert_chat]
   end
 ```
 
