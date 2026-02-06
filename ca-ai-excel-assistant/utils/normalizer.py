@@ -16,6 +16,7 @@ COLUMN_ALIASES = {
     "transaction date": "rowdate",
     "rowdate": "rowdate",
     "transaction_date": "rowdate",
+    "transactiondate": "rowdate",  # Handle camelCase variant
     "description": "description",
     "desc": "description",
     "category": "category",
@@ -24,7 +25,7 @@ COLUMN_ALIASES = {
 }
 
 # Column names that look like dates (after lower/strip)
-DATE_LIKE = {"date", "rowdate", "transaction date", "transaction_date", "dt", "transaction_dt"}
+DATE_LIKE = {"date", "rowdate", "transaction date", "transaction_date", "transactiondate", "dt", "transaction_dt"}
 
 # Column names that look like amounts (after lower/strip)
 AMOUNT_LIKE = {"amount", "value", "total", "gst", "tax", "sum", "balance"}
@@ -46,13 +47,19 @@ def _map_alias(col: str) -> str:
 
 
 def _to_iso_date(val) -> Optional[str]:
-    """Convert value to ISO date string (YYYY-MM-DD) or None."""
+    """
+    Convert value to ISO date string (YYYY-MM-DD) or None.
+    ALWAYS uses pd.to_datetime() for robust parsing.
+    """
     if pd.isna(val):
         return None
     if isinstance(val, str) and val.strip() == "":
         return None
     try:
-        dt = pd.to_datetime(val)
+        # Use pd.to_datetime() with error handling for robust parsing
+        dt = pd.to_datetime(val, errors='coerce')
+        if pd.isna(dt):
+            return None
         return dt.strftime("%Y-%m-%d")
     except Exception:
         return None
@@ -107,11 +114,18 @@ def normalize(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
             unique.append(c)
     out.columns = unique
 
-    # Convert date-like columns to ISO
+    # Convert date-like columns to ISO using pd.to_datetime() for robust parsing
     for c in out.columns:
         base = c.split("_")[0].lower() if "_" in c else c.lower()
         if base in DATE_LIKE or "date" in c.lower():
-            out[c] = out[c].apply(_to_iso_date)
+            # Use pd.to_datetime() directly on the entire Series for better performance and robustness
+            try:
+                out[c] = pd.to_datetime(out[c], errors='coerce').dt.strftime("%Y-%m-%d")
+                # Convert NaT to None for consistency
+                out[c] = out[c].where(pd.notna(out[c]), None)
+            except Exception:
+                # Fallback to row-by-row if Series conversion fails
+                out[c] = out[c].apply(_to_iso_date)
 
     # Convert amount-like columns to float
     for c in out.columns:
@@ -123,8 +137,18 @@ def normalize(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
 
 
 def get_rowdate_column_name(normalized_columns: List[str]) -> Optional[str]:
-    """Return the first column name that represents row date (e.g. 'rowdate', 'date'), or None."""
+    """
+    Return the first column name that represents row date.
+    Checks for: rowdate, date, transactiondate, transaction_date, etc.
+    """
+    # Priority order: prefer exact matches first
+    priority_names = ["rowdate", "date", "transactiondate", "transaction_date"]
+    for pname in priority_names:
+        for c in normalized_columns:
+            if c.lower() == pname:
+                return c
+    # Fallback: any column containing "date"
     for c in normalized_columns:
-        if c.lower() in ("rowdate", "date") or c.lower().startswith("date_"):
+        if "date" in c.lower():
             return c
     return None

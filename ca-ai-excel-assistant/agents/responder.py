@@ -90,13 +90,16 @@ def _format_fallback_answer(planner_output: dict, analyst_output: dict, is_summa
 def respond(
     planner_output: dict,
     analyst_output: dict,
-    question: str,
+    question: Optional[str] = None,
     policy_action: Optional[str] = None,
     policy_message: Optional[str] = None,
 ) -> str:
     """
     Generate natural-language answer. If policy says block or planner risk_flag, return safe message.
-    Otherwise format analyst result into an elaborate response (with Groq if available).
+    Otherwise format analyst result into an elaborate response.
+    
+    RAG (Groq LLM) is ONLY used when question is provided (for explanation_query).
+    For data/breakdown/trend queries, question should be None to disable RAG.
     """
     risk_flag = planner_output.get("risk_flag", False)
     if risk_flag or (policy_action == "block"):
@@ -113,35 +116,49 @@ def respond(
     context = _context_string(planner_output)
     intent = (planner_output.get("intent") or "").strip().lower()
     is_summary = intent == "summarize"
-    # For summary, pass full data (increase cap and tokens so LLM can list attributes and key figures)
-    summary = json.dumps(analyst_output, default=str, indent=0)[:6000 if is_summary else 3000]
+    
+    # ======================================================================
+    # RAG USAGE — ONLY for explanation queries (when question is provided)
+    # For data/breakdown/trend queries, use template-based fallback (NO RAG)
+    # ======================================================================
+    if question and GROQ_API_KEY:
+        # RAG allowed only for explanation queries
+        try:
+            from groq import Groq
+            client = Groq(api_key=GROQ_API_KEY)
+            # For summary, pass full data (increase cap and tokens so LLM can list attributes and key figures)
+            summary = json.dumps(analyst_output, default=str, indent=0)[:6000 if is_summary else 3000]
+            
+            system = """You are an assistant for a Chartered Accountant firm. You answer based ONLY on the provided data summary (JSON) and context.
 
-    if not GROQ_API_KEY:
-        return reframe_prefix + _format_fallback_answer(planner_output, analyst_output, is_summary=is_summary)
+RAG RULES (STRICT):
+- You RECEIVE: computed totals, computed series, exact date range — use them as-is.
+- You must NOT: compute numbers yourself, override filters, invent dates, or guess any values.
+- Use ONLY the numbers and dates provided in the data summary. NEVER invent or guess totals or dates.
 
-    try:
-        from groq import Groq
-        client = Groq(api_key=GROQ_API_KEY)
-        system = """You are an assistant for a Chartered Accountant firm. You answer based ONLY on the provided data summary (JSON) and context.
-Give an elaborate, clear answer in plain language:
+Answer in plain language:
 1. Start with the context (date range, client, metric) when relevant.
 2. If the user asked for a summary or "all details", list every attribute (column name) from the data, then state the date range in the data, then the main total and row count.
 3. State the main total or outcome with the exact numbers from the data.
 4. If there is a breakdown, series, or comparison, include key points (for summary requests, mention all categories and dates; otherwise top categories and trend).
 5. End with a brief interpretation (e.g. "Total GST for this period is X" or "Expenses are highest in category Y").
 Use proper number formatting (e.g. 1,234.56). For summary requests write a comprehensive answer covering every attribute and key figure; otherwise 4-8 sentences. No legal or tax advice. No markdown formatting."""
-        user = f"Context: {context or 'none'}\n\nQuestion: {question}\n\nData summary:\n{summary}\n\nAnswer:"
-        max_tokens = 1024 if is_summary else 512
-        response = client.chat.completions.create(
-            model=os.getenv("GROQ_MODEL", DEFAULT_MODEL),
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.2,
-            max_tokens=max_tokens,
-        )
-        content = (response.choices[0].message.content or "").strip()
-        return reframe_prefix + (content if content else _format_fallback_answer(planner_output, analyst_output, is_summary=is_summary))
-    except Exception:
-        return reframe_prefix + _format_fallback_answer(planner_output, analyst_output, is_summary=is_summary)
+            user = f"Context: {context or 'none'}\n\nQuestion: {question}\n\nData summary:\n{summary}\n\nAnswer:"
+            max_tokens = 1024 if is_summary else 512
+            response = client.chat.completions.create(
+                model=os.getenv("GROQ_MODEL", DEFAULT_MODEL),
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.2,
+                max_tokens=max_tokens,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            if content:
+                return reframe_prefix + content
+        except Exception:
+            pass  # Fall through to template-based answer
+    
+    # Template-based answer (NO RAG) for data/breakdown/trend queries
+    return reframe_prefix + _format_fallback_answer(planner_output, analyst_output, is_summary=is_summary)

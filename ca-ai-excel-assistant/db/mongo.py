@@ -61,12 +61,28 @@ def insert_file(
     client_tag: Optional[str] = None,
     column_names: Optional[list] = None,
     column_count: Optional[int] = None,
+    original_column_names: Optional[list] = None,
+    semantic_match_columns: Optional[list] = None,
+    min_row_date: Optional[str] = None,
+    max_row_date: Optional[str] = None,
 ) -> str:
     """Insert file metadata (including column_names, column_count for schema_query). Returns fileId or empty string if not connected."""
     coll = _files()
     if coll is None:
         return ""
-    doc = file_doc(file_id, upload_date, filename, row_count, client_tag, column_names=column_names, column_count=column_count)
+    doc = file_doc(
+        file_id,
+        upload_date,
+        filename,
+        row_count,
+        client_tag,
+        column_names=column_names,
+        column_count=column_count,
+        original_column_names=original_column_names,
+        semantic_match_columns=semantic_match_columns,
+        min_row_date=min_row_date,
+        max_row_date=max_row_date,
+    )
     coll.insert_one(doc)
     return file_id
 
@@ -123,7 +139,16 @@ def find_files(
 def get_latest_file_schema() -> dict:
     """
     Return schema metadata from the most recently uploaded file for schema_query.
-    Returns: { "column_names": list, "column_count": int, "row_count": int } or empty dict if no files.
+    Returns:
+        {
+          "column_names": list,              # normalized column names
+          "column_count": int,
+          "row_count": int,
+          "original_column_names": list,     # raw Excel headers if available
+          "normalized_column_names": list,   # alias for column_names
+          "semantic_match_columns": list,    # normalized-for-match names if stored
+        }
+        or empty dict if no files.
     """
     coll = _files()
     if coll is None:
@@ -131,10 +156,20 @@ def get_latest_file_schema() -> dict:
     doc = coll.find_one(sort=[("createdAt", -1)])
     if doc is None:
         return {}
+    column_names = doc.get("columnNames") or []
+    original_column_names = doc.get("originalColumnNames") or []
+    semantic_match_columns = doc.get("semanticMatchColumns") or []
+    min_date = doc.get("minRowDate")
+    max_date = doc.get("maxRowDate")
     return {
-        "column_names": doc.get("columnNames") or [],
-        "column_count": doc.get("columnCount") or len(doc.get("columnNames") or []),
+        "column_names": column_names,
+        "column_count": doc.get("columnCount") or len(column_names),
         "row_count": doc.get("rowCount") or 0,
+        "original_column_names": original_column_names,
+        "normalized_column_names": column_names,
+        "semantic_match_columns": semantic_match_columns,
+        "min_date": min_date,
+        "max_date": max_date,
     }
 
 
@@ -157,10 +192,12 @@ def get_latest_file_meta() -> dict:
 
 def get_nearby_dates_for_client(
     client_tag: Optional[str] = None,
+    file_id: Optional[str] = None,
     limit: int = 5,
 ) -> List[str]:
     """
-    Return distinct rowDate values for "no data" suggestions (e.g. "Data exists on 9 Feb, 11 Feb").
+    Return distinct rowDate values for "no data" suggestions.
+    Scoped by file_id when provided (SINGLE DATASET AUTHORITY).
     """
     coll = _data_rows()
     if coll is None:
@@ -168,6 +205,8 @@ def get_nearby_dates_for_client(
     q = {}
     if client_tag is not None:
         q["clientTag"] = client_tag
+    if file_id is not None:
+        q["fileId"] = file_id
     dates = coll.distinct("rowDate", q) if q else coll.distinct("rowDate")
     dates = sorted([str(d).strip() for d in dates if d is not None and str(d).strip()])
     return dates[:limit] if limit else dates

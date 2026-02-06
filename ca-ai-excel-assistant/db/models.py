@@ -21,8 +21,21 @@ def file_doc(
     column_names: Optional[list] = None,
     column_count: Optional[int] = None,
     created_at: Optional[datetime] = None,
+    original_column_names: Optional[list] = None,
+    semantic_match_columns: Optional[list] = None,
+    min_row_date: Optional[str] = None,
+    max_row_date: Optional[str] = None,
 ) -> dict:
-    """Build a file document for insertion. column_names and column_count for schema_query."""
+    """
+    Build a file document for insertion.
+
+    Stored fields:
+    - columnNames: normalized column names used by the rest of the pipeline.
+    - columnCount: number of columns.
+    - originalColumnNames: raw Excel headers as uploaded.
+    - semanticMatchColumns: additional normalized forms (lowercase, no spaces/underscores)
+      used by the Semantic Column Resolver for fuzzy matching.
+    """
     doc = {
         "fileId": file_id,
         "uploadDate": upload_date,
@@ -37,6 +50,14 @@ def file_doc(
         doc["columnCount"] = int(column_count)
     elif column_names is not None:
         doc["columnCount"] = len(column_names)
+    if original_column_names is not None:
+        doc["originalColumnNames"] = list(original_column_names)
+    if semantic_match_columns is not None:
+        doc["semanticMatchColumns"] = list(semantic_match_columns)
+    if min_row_date is not None:
+        doc["minRowDate"] = str(min_row_date)
+    if max_row_date is not None:
+        doc["maxRowDate"] = str(max_row_date)
     return doc
 
 

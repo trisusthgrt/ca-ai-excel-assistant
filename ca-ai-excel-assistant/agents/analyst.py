@@ -56,12 +56,13 @@ def _find_key(row: dict, candidates: set) -> Optional[str]:
     return None
 
 
-def analyze(intent: str, data: Any, breakdown_by: Optional[str] = None) -> dict:
+def analyze(intent: str, data: Any, breakdown_by: Optional[str] = None, amount_column: Optional[str] = None) -> dict:
     """
     Perform calculations only. No LLM.
     SAFETY: Run only if rows > 0 (or cached daily/monthly totals present). Never invent totals; only compute over provided rows.
     data: list of row dicts OR dict from DataAgent with "rows", "daily_totals", "monthly_totals".
     breakdown_by: optional column name to break down by (e.g. "ClientName", "Branch", "Category").
+    amount_column: optional resolved amount column from Semantic Column Resolver (e.g. "gstamount"); used when provided and present in rows.
     Returns structured dict: total, breakdown, series, compare, etc.
     """
     # Guard: do not run on empty data (orchestrator should not call when rows==0; this is a safety backstop)
@@ -91,12 +92,19 @@ def analyze(intent: str, data: Any, breakdown_by: Optional[str] = None) -> dict:
     if not rows and not daily_totals and not monthly_totals:
         return {"total": 0, "count": 0}
 
-    # Detect amount column
+    # Amount column: use resolved amount_column from Semantic Resolver when present in rows
     amount_key = None
-    for r in rows:
-        amount_key = _find_key(r, AMOUNT_KEYS)
-        if amount_key:
-            break
+    if amount_column and rows and (rows[0] or {}).keys():
+        # Case-insensitive match for resolved column
+        for k in (rows[0] or {}).keys():
+            if k.lower() == amount_column.lower():
+                amount_key = k
+                break
+    if not amount_key:
+        for r in rows:
+            amount_key = _find_key(r, AMOUNT_KEYS)
+            if amount_key:
+                break
     if not amount_key:
         for r in rows:
             for k, v in r.items():

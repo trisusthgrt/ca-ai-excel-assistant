@@ -9,12 +9,14 @@ import streamlit as st
 
 # Ensure orchestrator logs (original query, normalized query, corrections) are visible
 logging.basicConfig(level=logging.INFO, format="%(name)s | %(levelname)s | %(message)s")
+logger = logging.getLogger(__name__)
 
 from agents.orchestrator import run as orchestrator_run
 from db import mongo
 from db.models import row_doc
 from utils.excel_parser import parse_excel
 from utils.normalizer import get_rowdate_column_name, normalize
+from utils.semantic_column_resolver import _normalize_for_match
 from vector import chroma_client
 
 st.set_page_config(page_title="CA AI Excel Assistant", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
@@ -122,6 +124,8 @@ if uploaded_file is not None and upload_date is not None:
                 if df is None or df.empty:
                     st.error("No data in the Excel file.")
                 else:
+                    # Preserve original column names as they appear in Excel
+                    original_columns = list(df.columns)
                     norm_df, col_names = normalize(df)
                     if norm_df.empty:
                         st.error("Normalization produced no rows.")
@@ -132,10 +136,37 @@ if uploaded_file is not None and upload_date is not None:
                         row_count = len(norm_df)
                         column_count = len(col_names)
                         column_names = list(col_names)
+                        # Additional normalized forms for semantic matching (lowercase, no spaces/underscores)
+                        semantic_match_columns = [_normalize_for_match(c) for c in column_names]
                         rowdate_col = get_rowdate_column_name(col_names)
+                        
+                        # Compute min/max dates for logging and metadata
+                        min_row_date = None
+                        max_row_date = None
+                        if rowdate_col and rowdate_col in norm_df.columns:
+                            date_series = norm_df[rowdate_col].dropna()
+                            if not date_series.empty:
+                                valid_dates = [d for d in date_series if d is not None and str(d).strip()]
+                                if valid_dates:
+                                    min_row_date = min(valid_dates)
+                                    max_row_date = max(valid_dates)
+                                    logger.info("upload_date_range: file_id=%s min_row_date=%s max_row_date=%s", 
+                                                file_id, min_row_date, max_row_date)
 
                         # Insert file metadata (column_names, column_count for schema_query)
-                        fid = mongo.insert_file(file_id, upload_date_str, filename, row_count, client_tag, column_names=column_names, column_count=column_count)
+                        fid = mongo.insert_file(
+                            file_id,
+                            upload_date_str,
+                            filename,
+                            row_count,
+                            client_tag,
+                            column_names=column_names,
+                            column_count=column_count,
+                            original_column_names=original_columns,
+                            semantic_match_columns=semantic_match_columns,
+                            min_row_date=min_row_date,
+                            max_row_date=max_row_date,
+                        )
                         if fid == "" and mongo.get_db() is None:
                             st.warning("MongoDB not connected. Set MONGODB_URI in .env to persist data.")
                         elif fid != "":
