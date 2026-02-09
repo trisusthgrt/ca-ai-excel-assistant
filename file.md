@@ -1,3 +1,4 @@
+```mermaid
 flowchart TD
   %% Entry points
   U[User] --> UI[Streamlit UI app.py]
@@ -65,4 +66,5 @@ flowchart TD
   %% Analysis and response
   ROWS_FOUND -->|Yes| AN[Analyze agents.analyst analyze]
   AN --> RESP[Respond agents.responder respond]
+```
   RESP --> UI
