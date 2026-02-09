@@ -1,70 +1,69 @@
 ```mermaid
 flowchart TD
-  %% Entry points
-  U[User] --> UI[Streamlit UI app.py]
+  %% ENTRY
+  User --> UI[Streamlit UI app_py]
 
-  %% Upload flow
-  UI --> UP[Upload Excel file]
-  UP --> EP[Parse Excel utils.excel_parser]
-  EP --> NORM[Normalize data utils.normalizer]
-  NORM --> MF[Save file metadata db.mongo insert_file]
-  NORM --> MR[Save rows db.mongo insert_rows]
-  NORM --> VE[Create embeddings vector.chroma_client add_documents]
+  %% UPLOAD FLOW
+  UI --> Upload[Upload Excel]
+  Upload --> Parse[Parse Excel utils_excel_parser]
+  Parse --> Normalize[Normalize data utils_normalizer]
+  Normalize --> SaveFileMeta[Save file metadata db_mongo_insert_file]
+  Normalize --> SaveRows[Save rows db_mongo_insert_rows]
+  Normalize --> SaveEmb[Save embeddings vector_chroma_client_add_documents]
 
-  MF --> MF_COLL[(Mongo collection files)]
-  MR --> MR_COLL[(Mongo collection data_rows)]
-  VE --> CH_COLL[(ChromaDB collection)]
+  SaveFileMeta --> MongoFiles[(Mongo collection files)]
+  SaveRows --> MongoRows[(Mongo collection data_rows)]
+  SaveEmb --> Chroma[(ChromaDB collection)]
 
-  %% Query flow
-  UI --> QIN[User question in chat]
-  QIN --> ORCH[Orchestrator agents.orchestrator run]
+  %% QUERY FLOW
+  UI --> Ask[User question]
+  Ask --> Orchestrator[agents_orchestrator_run]
 
-  %% Normalize and early routing
-  ORCH --> QN[Normalize text utils.query_normalizer]
-  QN --> RT1[Route is_schema_query_by_text utils.query_router]
+  Orchestrator --> QNorm[Normalize query utils_query_normalizer]
+  QNorm --> SchemaCheck[Check schema query utils_query_router]
 
-  RT1 -->|Schema query| S1[Get latest schema db.mongo get_latest_file_schema]
-  S1 --> S2[Build schema answer orchestrator _build_schema_answer]
-  S2 --> UI
+  %% SCHEMA PATH
+  SchemaCheck -->|schema| GetSchema[db_mongo_get_latest_file_schema]
+  GetSchema --> BuildSchema[Build schema answer orchestrator]
+  BuildSchema --> UI
 
-  RT1 -->|Data or explain query| DSTART[Start data path]
+  %% DATA / EXPLAIN PATH
+  SchemaCheck -->|data_or_explain| StartData[Start data path]
 
-  %% Semantic resolution
-  DSTART --> LS[Get latest schema and meta db.mongo]
-  LS --> RES[Semantic resolve utils.semantic_column_resolver resolve_semantic_columns]
-  RES --> CLAR{Needs clarification}
-  CLAR -->|Yes| CM[Build clarification message]
-  CM --> UI
+  StartData --> GetLatest[Get latest schema and meta db_mongo]
+  GetLatest --> SemResolver[Semantic resolve utils_semantic_column_resolver]
+  SemResolver --> Clarify{Needs clarification}
+  Clarify -->|yes| ClarMsg[Build clarification message]
+  ClarMsg --> UI
 
-  CLAR -->|No| PLAN[Planner agents.planner plan]
-  PLAN --> POL[Policy guard utils.policy_guard check_policy]
-  POL --> ACT{Policy action}
+  Clarify -->|no| Planner[agents_planner_plan]
+  Planner --> Policy[utils_policy_guard_check_policy]
+  Policy --> Action{Policy action}
 
-  ACT -->|Block or clarify| UI
-  ACT -->|Allow| FIX[Deterministic fixes upload date month range next N days]
+  Action -->|block_or_clarify| UI
+  Action -->|allow| Fixes[Deterministic fixes dates]
 
-  %% Merge resolution and route
-  FIX --> MERGE[Merge resolver into planner_output amount date breakdown]
-  MERGE --> RT2[Route type utils.query_router route_query_type]
-  RT2 --> ENF[Enforce latest file_id for row_date]
+  Fixes --> Merge[Merge resolver into planner_output]
+  Merge --> RouteType[Route type utils_query_router_route_query_type]
+  RouteType --> EnforceFile[Enforce latest file_id]
 
-  %% Data fetch
-  ENF --> DA[data_agent agents.data_agent fetch_data]
-  DA --> FR[Find rows db.mongo find_rows]
-  DA --> AGG[Compute daily monthly totals utils.aggregation_cache]
-  FR --> ROWS_FOUND{Any rows}
+  %% DATA FETCH
+  EnforceFile --> DataAgent[agents_data_agent_fetch_data]
+  DataAgent --> FindRows[db_mongo_find_rows]
+  DataAgent --> Agg[Compute daily monthly totals utils_aggregation_cache]
+  FindRows --> RowsCheck{Any rows}
 
-  %% Optional RAG retrieval
-  DA --> RAG_CHECK{Explain or summarize}
-  RAG_CHECK -->|Yes| RAGQ[Chroma query scoped by fileId]
-  RAG_CHECK -->|No| RAG_SKIP[Skip vector search]
+  %% OPTIONAL RAG
+  DataAgent --> RagCheck{Explain_or_summarize}
+  RagCheck -->|yes| RagQuery[Chroma query by fileId]
+  RagCheck -->|no| RagSkip[Skip vector search]
 
-  %% No data path
-  ROWS_FOUND -->|No| ND[Build no data explanation orchestrator _build_no_data_explanation]
-  ND --> UI
+  %% NO DATA
+  RowsCheck -->|no_rows| NoData[No data explanation orchestrator]
+  NoData --> UI
 
-  %% Analysis and response
-  ROWS_FOUND -->|Yes| AN[Analyze agents.analyst analyze]
-  AN --> RESP[Respond agents.responder respond]
+  %% ANALYSIS + RESPONSE
+  RowsCheck -->|has_rows| Analyst[agents_analyst_analyze]
+  Analyst --> Responder[agents_responder_respond]
+  Responder --> UI
 ```
-  RESP --> UI
